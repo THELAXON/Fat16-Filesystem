@@ -71,15 +71,15 @@ int main(int argc, char *agrv[])
     printf("\n");
 
 
-    uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16);
-    lseek(fd,bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec,SEEK_CUR);
-    read(fd,fat,bsp->BPB_FATSz16);
+    // uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16);
+    // lseek(fd,bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec,SEEK_CUR);
+    // read(fd,fat,bsp->BPB_FATSz16);
 
-    for(int i= 0; i < bsp->BPB_FATSz16; i++)
-    {
-      printf("Cluster:%hu\n", fat[i]);
-    }
-    printf("\n");
+    // for(int i= 0; i < bsp->BPB_FATSz16; i++)
+    // {
+    //   printf("Cluster:%hu\n", fat[i]);
+    // }
+    // printf("\n");
 
     lseek(fd,(bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec ,SEEK_SET);
 
