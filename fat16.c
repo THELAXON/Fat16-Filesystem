@@ -49,7 +49,6 @@ int main(int argc, char *agrv[])
 {
 
     int fd = open("fat16.img", O_RDONLY);
-
     if(fd < 0)
     {
         printf("Failed to read file.\n");
@@ -62,24 +61,24 @@ int main(int argc, char *agrv[])
     printf("Bytes per sector: %hu\n",bsp->BPB_BytsPerSec);
     printf("Sectors per cluster: %hu\n",bsp->BPB_SecPerClus);
     printf("Reserved Sector Count: %hu\n",bsp->BPB_RsvdSecCnt);
-    printf("Number of copies of FAT: %hu\n",bsp->BPB_NumFATs);
-    printf("FAT12/FAT16: size of root DIR: %hu\n",bsp->BPB_RootEntCnt);
-    printf("Sectors, may be 0, see below: %hu\n",bsp->BPB_TotSec16);
-    printf("Sectors in FAT(FAT12 OR FAT16):%hu\n",bsp ->BPB_FATSz16);
-    printf("Sectors if BPB_TOtSec16 == 0: %hu\n",bsp->BPB_TotSec32);
+    printf("Number of FATs: %hu\n",bsp->BPB_NumFATs);
+    printf("Size of root DIR: %hu\n",bsp->BPB_RootEntCnt);
+    printf("Total Sector count: %hu\n",bsp->BPB_TotSec16);
+    printf("Sectors in FAT: %hu\n",bsp ->BPB_FATSz16);
+    printf("Sectors if Total Sector count is 0 : %hu\n",bsp->BPB_TotSec32);
     printf("Non zero terminated String: %s\n",bsp->BS_VolLab);
     printf("\n");
 
 
-    uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16);
-    lseek(fd,bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec,SEEK_CUR);
-    read(fd,fat,bsp->BPB_FATSz16);
+    uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
+    lseek(fd,bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec,SEEK_SET);
+    read(fd,fat,bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
 
-    for(int i= 0; i < bsp->BPB_FATSz16; i++)
-    {
-      printf("Cluster:%hu\n", fat[i]);
-    }
-    printf("\n");
+    // for(int i= 0; i < bsp->BPB_FATSz16; i++)
+    // {
+    //   printf("Cluster:%hu\n", fat[i]);
+    // }
+    // printf("\n");
 
     lseek(fd,(bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec ,SEEK_SET);
 
@@ -89,50 +88,30 @@ int main(int argc, char *agrv[])
     {
       rd[i] = (RootDirectory*) malloc(sizeof(RootDirectory));
       read(fd,rd[i], sizeof(RootDirectory));
-      printf("DIR NAME: %s\n",rd[i]->DIR_Name);
-      printf("DIR Attr: %hu\n",rd[i]->DIR_Attr);
-      printf("Last read or write: %hu\n",rd[i]->DIR_LstAccDate);
-      printf("Top 16 bits file's 1st cluster: %d\n",rd[i]->DIR_FstClusHI);
-      printf("Time of last write: %hu\n",rd[i]->DIR_WrtTime);
-      printf("Date of last write: %hu\n",rd[i]->DIR_WrtDate);                                             
-      printf("File Size in bytes: %hu\n",rd[i]->DIR_FileSize);
-      printf("\n");
+
+      unsigned int readonly = (rd[i]->DIR_Attr & 1);
+      unsigned int hidden = (rd[i]->DIR_Attr & 2) >> 1;
+      unsigned int system = (rd[i]->DIR_Attr & 4) >> 2;
+      unsigned int volumename = (rd[i]->DIR_Attr & 8) >> 3;
+      unsigned int directory = (rd[i]->DIR_Attr & 16) >> 4;
+      unsigned int archieve = (rd[i]->DIR_Attr & 32) >> 5;
+
+      unsigned int day = (rd[i]->DIR_WrtDate & 31);
+      unsigned int month = ((rd[i]->DIR_WrtDate & 480) >> 5);
+      unsigned int year = (((rd[i]->DIR_WrtDate & 65024) >> 9)+1980);
+      unsigned int sec = ((rd[i]->DIR_WrtTime & 31) * 2);
+      unsigned int min = ((rd[i]->DIR_WrtTime & 2016) >> 5);
+      unsigned int hour = ((rd[i]->DIR_WrtTime & 63488) >> 11);
+
+      if((readonly == 1) && (hidden == 1) && (system == 1) && (volumename == 1) && (directory == 0) && (archieve == 0))
+      {
+        continue;
+      }
+      else
+      {
+        printf("First Cluster: %d Last Modified: %hu-%hu-%hu Time: %hu-%hu-%hu Attributes-> A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu File size:%hu DIR NAME: %s\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archieve,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);                                     
+        printf("\n");
+      }
     }
 
-    // uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16);
-    // lseek(fd,bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec,SEEK_CUR);
-    // read(fd,fat,bsp->BPB_FATSz16);
-
-    // for(int i= 0; i < bsp->BPB_FATSz16; i++)
-    // {
-    //   printf("Cluster:%hu\n", fat[i]);
-    // }
-
-    // uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
-    // lseek(fd,bsp->BPB_BytsPerSec * bsp->BPB_RsvdSecCnt,SEEK_CUR);
-    // read(fd,fat,bsp->BPB_BytsPerSec*bsp->BPB_FATSz16);
-
-    // for(int i= 0; i < ; i++)
-    // {
-    //   printf("Cluster:%hu\n", fat[i]);
-    // }
-
-    //RootDirectory* rd = (RootDirectory*) malloc(sizeof(RootDirectory));
-    //lseek(fd,(bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec ,SEEK_SET);
-    //read(fd,rd, sizeof(RootDirectory));
-    //printf("DIR NAME: %s\n",rd->DIR_Name);
-    //printf("DIR Attr: %hu\n",rd->DIR_Attr);
-    //printf("Used by windows: %hu\n",rd->DIR_NTRes);
-    //printf("Creation Time in tenths of seconds: %hu\n",rd->DIR_CrtTimeTenth);
-    //printf("Creation Time in seconds: %hu\n",rd->DIR_CrtTime);
-    //printf("Creation Date: %hu\n",rd->DIR_CrtDate);
-    //printf("Last read or write: %hu\n",rd->DIR_LstAccDate);
-    //printf("Top 16 bits file's 1st cluster: %d\n",rd->DIR_FstClusHI);
-    //printf("Time of last write: %hu\n",rd->DIR_WrtTime);
-    //printf("Date of last write: %hu\n",rd->DIR_WrtDate);
-    //printf("Lower 16 bits file's 1st cluster: %d\n",rd->DIR_FstClusLO);                                              
-    //printf("File Size in bytes: %hu\n",rd->DIR_FileSize);
-
-    
-    
 }
