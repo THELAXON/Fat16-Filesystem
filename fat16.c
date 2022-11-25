@@ -29,7 +29,6 @@ uint8_t BS_VolLab[ 11 ]; // Non zero terminated string
 uint8_t BS_FilSysType[ 8 ]; // e.g. 'FAT16' (Not 0 term.)
 } BootSector;
 
-
 typedef struct __attribute__((__packed__)) {
 uint8_t DIR_Name[ 11 ]; // Non zero terminated string
 uint8_t DIR_Attr; // File attributes
@@ -49,6 +48,7 @@ int main(int argc, char *agrv[])
 {
 
     int fd = open("fat16.img", O_RDONLY);
+
     if(fd < 0)
     {
         printf("Failed to read file.\n");
@@ -69,7 +69,6 @@ int main(int argc, char *agrv[])
     printf("Non zero terminated String: %s\n",bsp->BS_VolLab);
     printf("\n");
 
-
     uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
     lseek(fd,bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec,SEEK_SET);
     read(fd,fat,bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
@@ -83,7 +82,9 @@ int main(int argc, char *agrv[])
     lseek(fd,(bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec ,SEEK_SET);
 
     RootDirectory* rd[(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3];
-
+    printf("---------------------------------------------------------------------------------------------------------\n");
+    printf("|  First Cluster  |  Last Modified  |    Time    |        Attributes         |  File Size  |   Dir Name |\n");
+    printf("---------------------------------------------------------------------------------------------------------\n");
     for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
     {
       rd[i] = (RootDirectory*) malloc(sizeof(RootDirectory));
@@ -103,13 +104,15 @@ int main(int argc, char *agrv[])
       unsigned int min = ((rd[i]->DIR_WrtTime & 2016) >> 5);
       unsigned int hour = ((rd[i]->DIR_WrtTime & 63488) >> 11);
 
+      
       if((readonly == 1) && (hidden == 1) && (system == 1) && (volumename == 1) && (directory == 0) && (archieve == 0))
       {
         continue;
       }
       else
       {
-        printf("First Cluster: %d Last Modified: %hu-%hu-%hu Time: %hu-%hu-%hu Attributes-> A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu File size:%hu DIR NAME: %s\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archieve,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);                                     
+        printf("|%.4d             |   %hu-%hu-%hu    |  %.2hu-%.2hu-%.2hu  |  A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu  | %.4hu        | %.11s|\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archieve,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);
+        printf("---------------------------------------------------------------------------------------------------------");                                     
         printf("\n");
       }
     }
