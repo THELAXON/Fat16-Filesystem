@@ -120,7 +120,7 @@ int main(int argc, char *agrv[])
       }
     }
 
-    char* buffer[10000];
+    char* buffer = (char*) malloc(bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus);
 
     for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
     {
