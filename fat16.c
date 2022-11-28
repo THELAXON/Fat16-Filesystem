@@ -71,7 +71,8 @@ int main(int argc, char *agrv[])
 
     uint16_t fat_offset = bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec;
     uint16_t rootdir_offset = (bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec;
-    
+    uint16_t data_offset = rootdir_offset+ bsp->BPB_RootEntCnt;
+
     uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
     lseek(fd,fat_offset,SEEK_SET);
     read(fd,fat,bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
@@ -119,6 +120,7 @@ int main(int argc, char *agrv[])
       }
     }
 
+    char* buffer[10000];
 
     for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
     {
@@ -130,8 +132,12 @@ int main(int argc, char *agrv[])
       {
         unsigned int y = rd[i]->DIR_FstClusLO;
         while(fat[y] != 0xfff8){
+
           y = fat[y+1];
-          lseek(fd,rootdir_offset,SEEK_SET);
+          lseek(fd,fat_offset+y,SEEK_SET);
+          read(fd,buffer,bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus);
+          printf("%s",buffer);
+          //printf("This is the cluster addr %hu\n",y);
         }
 
       }
