@@ -69,8 +69,11 @@ int main(int argc, char *agrv[])
     printf("Non zero terminated String: %s\n",bsp->BS_VolLab);
     printf("\n");
 
+    uint16_t fat_offset = bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec;
+    uint16_t rootdir_offset = (bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec;
+    
     uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
-    lseek(fd,bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec,SEEK_SET);
+    lseek(fd,fat_offset,SEEK_SET);
     read(fd,fat,bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
 
     // for(int i= 0; i < 3000; i++)
@@ -78,13 +81,13 @@ int main(int argc, char *agrv[])
     //   printf("Cluster:%hu\n", fat[i]);
     // }
     // printf("\n");
-
-
-
-    lseek(fd,(bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec ,SEEK_SET);
+  
+    lseek(fd,rootdir_offset,SEEK_SET);
 
     RootDirectory* rd[(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3];
-  
+    printf("---------------------------------------------------------------------------------------------------------\n");
+    printf("|  First Cluster  |  Last Modified  |    Time    |        Attributes         |  File Size  |   Dir Name |\n");
+    printf("---------------------------------------------------------------------------------------------------------\n");
     for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
     {
       rd[i] = (RootDirectory*) malloc(sizeof(RootDirectory));
@@ -96,7 +99,6 @@ int main(int argc, char *agrv[])
       unsigned int volumename = (rd[i]->DIR_Attr & 8) >> 3;
       unsigned int directory = (rd[i]->DIR_Attr & 16) >> 4;
       unsigned int archieve = (rd[i]->DIR_Attr & 32) >> 5;
-      unsigned int  firstcluster = rd[i]->DIR_FstClusLO;
 
       unsigned int day = (rd[i]->DIR_WrtDate & 31);
       unsigned int month = ((rd[i]->DIR_WrtDate & 480) >> 5);
@@ -104,28 +106,23 @@ int main(int argc, char *agrv[])
       unsigned int sec = ((rd[i]->DIR_WrtTime & 31) * 2);
       unsigned int min = ((rd[i]->DIR_WrtTime & 2016) >> 5);
       unsigned int hour = (rd[i]->DIR_WrtTime >> 11);
-      
+
       if((readonly == 1) && (hidden == 1) && (system == 1) && (volumename == 1) && (directory == 0) && (archieve == 0))
       {
         continue;
       }
       else
       {
-        unsigned int y = rd[i]->DIR_FstClusLO;
-        while(fat[y] != 0xfff8){
-          
-          printf("next_addr:%hu\n",y);
-          y = fat[y+1];
-        }
+        printf("|%.4d             |   %hu-%hu-%hu    |  %.2hu-%.2hu-%.2hu  |  A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu  | %.4hu        | %.11s|\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archieve,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);
+        printf("---------------------------------------------------------------------------------------------------------");                                     
+        printf("\n");
       }
-      printf("that was the end\n");
     }
 
 
-  /*  for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
+    for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
     {
-      
-      if(((rd[i]->DIR_Attr & 1) == 1) && (((rd[i]->DIR_Attr & 2) >> 1)== 1) && (((rd[i]->DIR_Attr & 4)) >> 2 == 1) && (((rd[i]->DIR_Attr & 8) >> 3) == 1) && (((rd[i]->DIR_Attr & 16) >> 4) == 0) && ((rd[i]->DIR_Attr & 16) >> 4== 0))
+      if(((rd[i]->DIR_Attr & 1) == 1) && (((rd[i]->DIR_Attr & 2) >> 1) == 1) && (((rd[i]->DIR_Attr & 4) >> 2) == 1) && (((rd[i]->DIR_Attr & 8) >> 3) == 1) && (((rd[i]->DIR_Attr & 16) >> 4) == 0) && (((rd[i]->DIR_Attr & 32) >> 5) == 0))
       {
         continue;
       }
@@ -133,55 +130,11 @@ int main(int argc, char *agrv[])
       {
         unsigned int y = rd[i]->DIR_FstClusLO;
         while(fat[y] != 0xfff8){
-          
-          printf("next_addr:%hu\n",y);
           y = fat[y+1];
+          lseek(fd,rootdir_offset,SEEK_SET);
         }
+
       }
-      printf("that was the end\n");
     }
-    */
-
-    lseek(fd,((bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec)*bsp->BPB_RootEntCnt * bsp->BPB_BytsPerSec,SEEK_SET);
-
-    //read(fd,);
-    // lseek(fd,(bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec ,SEEK_SET);
-
-    // RootDirectory* rd[(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3];
-    // printf("---------------------------------------------------------------------------------------------------------\n");
-    // printf("|  First Cluster  |  Last Modified  |    Time    |        Attributes         |  File Size  |   Dir Name |\n");
-    // printf("---------------------------------------------------------------------------------------------------------\n");
-    // for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
-    // {
-    //   rd[i] = (RootDirectory*) malloc(sizeof(RootDirectory));
-    //   read(fd,rd[i], sizeof(RootDirectory));
-
-    //   unsigned int readonly = (rd[i]->DIR_Attr & 1);
-    //   unsigned int hidden = (rd[i]->DIR_Attr & 2) >> 1;
-    //   unsigned int system = (rd[i]->DIR_Attr & 4) >> 2;
-    //   unsigned int volumename = (rd[i]->DIR_Attr & 8) >> 3;
-    //   unsigned int directory = (rd[i]->DIR_Attr & 16) >> 4;
-    //   unsigned int archieve = (rd[i]->DIR_Attr & 32) >> 5;
-
-    //   unsigned int day = (rd[i]->DIR_WrtDate & 31);
-    //   unsigned int month = ((rd[i]->DIR_WrtDate & 480) >> 5);
-    //   unsigned int year = (rd[i]->DIR_WrtDate >> 9)+1980;
-    //   unsigned int sec = ((rd[i]->DIR_WrtTime & 31) * 2);
-    //   unsigned int min = ((rd[i]->DIR_WrtTime & 2016) >> 5);
-    //   unsigned int hour = (rd[i]->DIR_WrtTime >> 11);
-
-      
-    //   if((readonly == 1) && (hidden == 1) && (system == 1) && (volumename == 1) && (directory == 0) && (archieve == 0))
-    //   {
-    //     continue;
-    //   }
-    //   else
-    //   {
-    //     printf("|%.4d             |   %hu-%hu-%hu    |  %.2hu-%.2hu-%.2hu  |  A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu  | %.4hu        | %.11s|\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archieve,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);
-    //     printf("---------------------------------------------------------------------------------------------------------");                                     
-    //     printf("\n");
-    //   }
-    // }
-
 
 }
