@@ -44,9 +44,89 @@ uint16_t DIR_FstClusLO; // Lower 16 bits file's 1st cluster
 uint32_t DIR_FileSize; // File size in bytes
 } RootDirectory;
 
+typedef struct __attribute__((__packed__)) {
+uint8_t LDIR_Ord; //Order/ position in sequence/ set
+uint8_t LDIR_Name1[ 10 ];//First 5 UNICODE characters
+uint8_t LDIR_Attr;// = ATTR_LONG_NAME (xx001111)
+uint8_t LDIR_Type;//Should = 0
+uint8_t LDIR_Chksum;//Checksum of short name
+uint8_t LDIR_Name2[ 12 ];//Middle 6 UNICODE characters
+uint16_t LDIR_FstClusLO;//MUST be zero
+uint8_t LDIR_Name3[ 4 ];//Last 2 UNICODE characters
+} LongDirectory;
+
+void task3(uint16_t* fat)
+{
+  for(int i= 0; i < 3000; i++)
+    {
+      printf("Cluster:%hu\n", fat[i]);
+    }
+    printf("\n");
+}
+
+void task4(RootDirectory* rd[],BootSector bsp[])
+{
+    printf("---------------------------------------------------------------------------------------------------------\n");
+    printf("|  First Cluster  |  Last Modified  |    Time    |        Attributes         |  File Size  |   Dir Name |\n");
+    printf("---------------------------------------------------------------------------------------------------------\n");
+    for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
+    {
+      unsigned int readonly = (rd[i]->DIR_Attr & 1);
+      unsigned int hidden = (rd[i]->DIR_Attr & 2) >> 1;
+      unsigned int system = (rd[i]->DIR_Attr & 4) >> 2;
+      unsigned int volumename = (rd[i]->DIR_Attr & 8) >> 3;
+      unsigned int directory = (rd[i]->DIR_Attr & 16) >> 4;
+      unsigned int archieve = (rd[i]->DIR_Attr & 32) >> 5;
+
+      unsigned int day = (rd[i]->DIR_WrtDate & 31);
+      unsigned int month = ((rd[i]->DIR_WrtDate & 480) >> 5);
+      unsigned int year = (rd[i]->DIR_WrtDate >> 9)+1980;
+      unsigned int sec = ((rd[i]->DIR_WrtTime & 31)*2);
+      unsigned int min = ((rd[i]->DIR_WrtTime & 2016) >> 5);
+      unsigned int hour = (rd[i]->DIR_WrtTime >> 11);
+
+
+      if((readonly == 1) && (hidden == 1) && (system == 1) && (volumename == 1) && (directory == 0) && (archieve == 0))
+      {
+        continue;
+      }
+      else
+      {
+        printf("|%.4d             |   %hu-%hu-%hu    |  %.2hu-%.2hu-%.2hu  |  A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu  | %.4hu        | %.11s|\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archieve,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);
+        printf("---------------------------------------------------------------------------------------------------------");                                     
+        printf("\n");
+      }
+    }
+}
+
+void task5(int fd,uint16_t* fat,BootSector bsp[],uint16_t data_offset,RootDirectory* rd[])
+{
+  for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
+    {
+      unsigned int readonly = (rd[i]->DIR_Attr & 1);
+      unsigned int hidden = (rd[i]->DIR_Attr & 2) >> 1;
+      unsigned int system = (rd[i]->DIR_Attr & 4) >> 2;
+      unsigned int volumename = (rd[i]->DIR_Attr & 8) >> 3;
+      unsigned int directory = (rd[i]->DIR_Attr & 16) >> 4;
+      unsigned int archieve = (rd[i]->DIR_Attr & 32) >> 5;
+
+      if((readonly == 0) && (hidden == 0) && (system == 0) && (volumename == 0) && (directory == 0) && (archieve == 1))
+      {
+        unsigned int cluster = rd[i]->DIR_FstClusLO;
+        char* buffer = (char*) malloc(bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus);
+        while(cluster < 0xfff8)
+        {
+          lseek(fd,data_offset+((cluster-2)*bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus),SEEK_SET);
+          read(fd,buffer,bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus);
+          printf("%s",buffer);
+          cluster= fat[cluster];
+        }
+      }
+    }
+}
+
 int main(int argc, char *agrv[])
 {
-
     int fd = open("fat16.img", O_RDONLY);
 
     if(fd < 0)
@@ -71,76 +151,24 @@ int main(int argc, char *agrv[])
 
     uint16_t fat_offset = bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec;
     uint16_t rootdir_offset = (bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec;
-    uint16_t data_offset = rootdir_offset+ bsp->BPB_RootEntCnt;
+    uint16_t data_offset = rootdir_offset+ (bsp->BPB_RootEntCnt*32);
 
     uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
     lseek(fd,fat_offset,SEEK_SET);
     read(fd,fat,bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
 
-    // for(int i= 0; i < 3000; i++)
-    // {
-    //   printf("Cluster:%hu\n", fat[i]);
-    // }
-    // printf("\n");
-  
     lseek(fd,rootdir_offset,SEEK_SET);
 
     RootDirectory* rd[(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3];
-    printf("---------------------------------------------------------------------------------------------------------\n");
-    printf("|  First Cluster  |  Last Modified  |    Time    |        Attributes         |  File Size  |   Dir Name |\n");
-    printf("---------------------------------------------------------------------------------------------------------\n");
+  
     for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
     {
       rd[i] = (RootDirectory*) malloc(sizeof(RootDirectory));
       read(fd,rd[i], sizeof(RootDirectory));
-
-      unsigned int readonly = (rd[i]->DIR_Attr & 1);
-      unsigned int hidden = (rd[i]->DIR_Attr & 2) >> 1;
-      unsigned int system = (rd[i]->DIR_Attr & 4) >> 2;
-      unsigned int volumename = (rd[i]->DIR_Attr & 8) >> 3;
-      unsigned int directory = (rd[i]->DIR_Attr & 16) >> 4;
-      unsigned int archieve = (rd[i]->DIR_Attr & 32) >> 5;
-
-      unsigned int day = (rd[i]->DIR_WrtDate & 31);
-      unsigned int month = ((rd[i]->DIR_WrtDate & 480) >> 5);
-      unsigned int year = (rd[i]->DIR_WrtDate >> 9)+1980;
-      unsigned int sec = ((rd[i]->DIR_WrtTime & 31) * 2);
-      unsigned int min = ((rd[i]->DIR_WrtTime & 2016) >> 5);
-      unsigned int hour = (rd[i]->DIR_WrtTime >> 11);
-
-      if((readonly == 1) && (hidden == 1) && (system == 1) && (volumename == 1) && (directory == 0) && (archieve == 0))
-      {
-        continue;
-      }
-      else
-      {
-        printf("|%.4d             |   %hu-%hu-%hu    |  %.2hu-%.2hu-%.2hu  |  A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu  | %.4hu        | %.11s|\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archieve,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);
-        printf("---------------------------------------------------------------------------------------------------------");                                     
-        printf("\n");
-      }
     }
-
-    char* buffer = (char*) malloc(bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus);
-
-    for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
-    {
-      if(((rd[i]->DIR_Attr & 1) == 1) && (((rd[i]->DIR_Attr & 2) >> 1) == 1) && (((rd[i]->DIR_Attr & 4) >> 2) == 1) && (((rd[i]->DIR_Attr & 8) >> 3) == 1) && (((rd[i]->DIR_Attr & 16) >> 4) == 0) && (((rd[i]->DIR_Attr & 32) >> 5) == 0))
-      {
-        continue;
-      }
-      else
-      {
-        unsigned int y = rd[i]->DIR_FstClusLO;
-        while(fat[y] != 0xfff8){
-
-          y = fat[y+1];
-          lseek(fd,fat_offset+y,SEEK_SET);
-          read(fd,buffer,bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus);
-          printf("%s",buffer);
-          //printf("This is the cluster addr %hu\n",y);
-        }
-
-      }
-    }
-
+    task3(fat);
+    task4(rd,bsp);
+    task5(fd,fat,bsp,data_offset,rd);
+    
+      
 }
