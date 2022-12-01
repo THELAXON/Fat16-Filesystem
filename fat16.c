@@ -42,29 +42,38 @@ uint16_t DIR_WrtTime; // Time of last write
 uint16_t DIR_WrtDate; // Date of last write
 uint16_t DIR_FstClusLO; // Lower 16 bits file's 1st cluster
 uint32_t DIR_FileSize; // File size in bytes
-} RootDirectory;
+} Directory;
 
-typedef struct __attribute__((__packed__)) {
-uint8_t LDIR_Ord; //Order/ position in sequence/ set
-uint8_t LDIR_Name1[ 10 ];//First 5 UNICODE characters
-uint8_t LDIR_Attr;// = ATTR_LONG_NAME (xx001111)
-uint8_t LDIR_Type;//Should = 0
-uint8_t LDIR_Chksum;//Checksum of short name
-uint8_t LDIR_Name2[ 12 ];//Middle 6 UNICODE characters
-uint16_t LDIR_FstClusLO;//MUST be zero
-uint8_t LDIR_Name3[ 4 ];//Last 2 UNICODE characters
-} LongDirectory;
+int fd; //declaring file reader
+uint16_t* fat; // declaring the fat array
+uint16_t fat_offset; // The fat offset to get to the Fat block
+uint16_t rootdir_offset;//The root directory offset to get to the root directory
+uint16_t data_offset; //The data offset to get to the data region
+BootSector* bsp; // Bootsector array
+Directory* rd[219]; // size of root directory given to array
+int sub;
 
-void task3(uint16_t* fat)
+
+void task3() // Task to print out the cluster chain in the fat table
 {
-  for(int i= 0; i < 3000; i++)
+  for(int i= 0; i < 2458; i++)
     {
       printf("Cluster:%hu\n", fat[i]);
     }
     printf("\n");
 }
 
-void task4(RootDirectory* rd[],BootSector bsp[])
+void printclusterchain(unsigned int cluster)
+{
+  int x = cluster;
+  while(cluster < 0xfff8)
+  {
+    printf("The cluster given:%hu\n",cluster);
+    cluster= fat[cluster];
+  }
+}
+
+void task4() // Prints the table for task 4 and only present the the directories which have the first three bits set to 1 while the directory and archive is set to 0
 {
     printf("---------------------------------------------------------------------------------------------------------\n");
     printf("|  First Cluster  |  Last Modified  |    Time    |        Attributes         |  File Size  |   Dir Name |\n");
@@ -76,7 +85,7 @@ void task4(RootDirectory* rd[],BootSector bsp[])
       unsigned int system = (rd[i]->DIR_Attr & 4) >> 2;
       unsigned int volumename = (rd[i]->DIR_Attr & 8) >> 3;
       unsigned int directory = (rd[i]->DIR_Attr & 16) >> 4;
-      unsigned int archieve = (rd[i]->DIR_Attr & 32) >> 5;
+      unsigned int archive = (rd[i]->DIR_Attr & 32) >> 5;
 
       unsigned int day = (rd[i]->DIR_WrtDate & 31);
       unsigned int month = ((rd[i]->DIR_WrtDate & 480) >> 5);
@@ -85,32 +94,29 @@ void task4(RootDirectory* rd[],BootSector bsp[])
       unsigned int min = ((rd[i]->DIR_WrtTime & 2016) >> 5);
       unsigned int hour = (rd[i]->DIR_WrtTime >> 11);
 
-
-      if((readonly == 1) && (hidden == 1) && (system == 1) && (volumename == 1) && (directory == 0) && (archieve == 0))
+      if(!(readonly == 1 && hidden == 1 && system == 1 && volumename == 1 && directory == 0 && archive == 0)) // checks if it is the given 
       {
-        continue;
-      }
-      else
-      {
-        printf("|%.4d             |   %hu-%hu-%hu    |  %.2hu-%.2hu-%.2hu  |  A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu  | %.4hu        | %.11s|\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archieve,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);
+        printf("|%.4d             |   %hu-%hu-%hu    |  %.2hu-%.2hu-%.2hu  |  A-%hu D-%hu V-%hu S-%hu H-%hu R-%hu  | %.4hu        | %.11s|\n",rd[i]->DIR_FstClusLO,year,month,day,hour,min,sec,archive,directory,volumename,system,hidden,readonly,rd[i]->DIR_FileSize,rd[i]->DIR_Name);
         printf("---------------------------------------------------------------------------------------------------------");                                     
         printf("\n");
       }
     }
+  
 }
 
-void task5(int fd,uint16_t* fat,BootSector bsp[],uint16_t data_offset,RootDirectory* rd[])
+void task5()
 {
+  /*Bitmasking and bitshifting the  directory attributes to check if it is a text file and then printing the text file for task 5*/
   for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
     {
-      unsigned int readonly = (rd[i]->DIR_Attr & 1);
+      unsigned int readonly = (rd[i]->DIR_Attr & 1);             
       unsigned int hidden = (rd[i]->DIR_Attr & 2) >> 1;
       unsigned int system = (rd[i]->DIR_Attr & 4) >> 2;
       unsigned int volumename = (rd[i]->DIR_Attr & 8) >> 3;
       unsigned int directory = (rd[i]->DIR_Attr & 16) >> 4;
-      unsigned int archieve = (rd[i]->DIR_Attr & 32) >> 5;
+      unsigned int archive = (rd[i]->DIR_Attr & 32) >> 5;
 
-      if((readonly == 0) && (hidden == 0) && (system == 0) && (volumename == 0) && (directory == 0) && (archieve == 1))
+      if((readonly == 0) && (hidden == 0) && (system == 0) && (volumename == 0) && (directory == 0) && (archive == 1))
       {
         unsigned int cluster = rd[i]->DIR_FstClusLO;
         char* buffer = (char*) malloc(bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus);
@@ -125,19 +131,32 @@ void task5(int fd,uint16_t* fat,BootSector bsp[],uint16_t data_offset,RootDirect
     }
 }
 
+void openFile(unsigned int volume,unsigned int ShortDirEntry) // Opens file using given cluster number as short directory entry and the buffer size using volume to print the contents of the file
+{
+    char* buffer = (char*) malloc(volume);
+    while(ShortDirEntry < 0xfff8)
+    {
+        lseek(fd,data_offset+((ShortDirEntry-2)*bsp->BPB_BytsPerSec* bsp->BPB_SecPerClus),SEEK_SET);
+        read(fd,buffer,volume);
+        printf("%s",buffer);
+        ShortDirEntry = fat[ShortDirEntry];
+    }
+}
+
+
 int main(int argc, char *agrv[])
 {
-    int fd = open("fat16.img", O_RDONLY);
+    fd = open("fat16.img", O_RDONLY); // opens the file
 
-    if(fd < 0)
+    if(fd < 0)  // if the file isn't there it picks up this error message
     {
         printf("Failed to read file.\n");
         exit(1);
     }
-    BootSector* bsp =(BootSector*)malloc(sizeof(BootSector));
-    read(fd,bsp, sizeof(BootSector));
+    bsp =(BootSector*)malloc(sizeof(BootSector)); // creating boot sector pointers
+    read(fd,bsp, sizeof(BootSector)); // read the boot sector as it is the first block in fat to read
 
-    printf("OEM NAME: %s\n",bsp->BS_OEMName);
+    printf("OEM NAME: %s\n",bsp->BS_OEMName);       // Prints contents given in the boot sector for later use
     printf("Bytes per sector: %hu\n",bsp->BPB_BytsPerSec);
     printf("Sectors per cluster: %hu\n",bsp->BPB_SecPerClus);
     printf("Reserved Sector Count: %hu\n",bsp->BPB_RsvdSecCnt);
@@ -149,26 +168,26 @@ int main(int argc, char *agrv[])
     printf("Non zero terminated String: %s\n",bsp->BS_VolLab);
     printf("\n");
 
-    uint16_t fat_offset = bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec;
-    uint16_t rootdir_offset = (bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec;
-    uint16_t data_offset = rootdir_offset+ (bsp->BPB_RootEntCnt*32);
+    fat_offset = bsp->BPB_RsvdSecCnt* bsp->BPB_BytsPerSec;  // offset iniated for the fat
+    rootdir_offset = (bsp->BPB_RsvdSecCnt + bsp->BPB_NumFATs * bsp->BPB_FATSz16) * bsp->BPB_BytsPerSec; // offset iniated for root directory
+    data_offset = rootdir_offset+ (bsp->BPB_RootEntCnt*32); // offset iniated for the data region offset
 
-    uint16_t* fat = (uint16_t*) malloc(bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
-    lseek(fd,fat_offset,SEEK_SET);
-    read(fd,fat,bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);
+    fat = (uint16_t*) malloc(bsp->BPB_FATSz16*bsp->BPB_BytsPerSec); // reading only 1 fat as the second is a backup incase of corrupt fat table
+    lseek(fd,fat_offset,SEEK_SET);   // lseek from the start to check for the fat table
+    read(fd,fat,bsp->BPB_FATSz16*bsp->BPB_BytsPerSec);  // reading fat region to fat table
 
-    lseek(fd,rootdir_offset,SEEK_SET);
+    lseek(fd,rootdir_offset,SEEK_SET);  // lseek to root directory offset to used to print he root directories out
 
-    RootDirectory* rd[(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3];
   
-    for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)
+    for(int i=0;i<(bsp->BPB_RootEntCnt/bsp->BPB_FATSz16)+3;i++)  // fill the root directories array to print out contents of the root directory
     {
-      rd[i] = (RootDirectory*) malloc(sizeof(RootDirectory));
-      read(fd,rd[i], sizeof(RootDirectory));
-    }
-    task3(fat);
-    task4(rd,bsp);
-    task5(fd,fat,bsp,data_offset,rd);
-    
-      
+      rd[i] = (Directory*) malloc(sizeof(Directory));
+      read(fd,rd[i], sizeof(Directory));
+    } 
+    task3(); // prints cluster chain
+    task4(); // prints the files and folders in root directory
+    task5(); // prints the contents of files in root directory
+    //openFile(302,1342); // opens a file based on the cluster number given and the number of bytes wanted to be read in terminal
+    printf("\n");
+    //printclusterchain(350);
 }
